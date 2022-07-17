@@ -1,14 +1,3 @@
-$(function () {
-  $('#ms')
-    .change(function () {
-      console.log($(this).val());
-    })
-    .multipleSelect({
-      width: '100%',
-      filter: true,
-    });
-});
-
 const info = {
   'LUIS,MANUEL,OJEDA,BONILLA': [
     {
@@ -340,6 +329,7 @@ function createMoodleNodes() {
     {
       data: {
         id: 'mod_resource',
+        label: 'mod_resource',
         level: 100,
         color: 'red',
       },
@@ -347,6 +337,7 @@ function createMoodleNodes() {
     {
       data: {
         id: 'mod_forum',
+        label: 'mod_forum',
         level: 100,
         color: 'red',
       },
@@ -354,6 +345,7 @@ function createMoodleNodes() {
     {
       data: {
         id: 'mod_page',
+        label: 'mod_page',
         level: 100,
         color: 'red',
       },
@@ -361,6 +353,7 @@ function createMoodleNodes() {
     {
       data: {
         id: 'mod_folder',
+        label: 'mod_folder',
         level: 100,
         color: 'red',
       },
@@ -368,6 +361,7 @@ function createMoodleNodes() {
     {
       data: {
         id: 'mod_url',
+        label: 'mod_url',
         level: 100,
         color: 'red',
       },
@@ -376,6 +370,7 @@ function createMoodleNodes() {
     {
       data: {
         id: 'mod_assign',
+        label: 'mod_assign',
         level: 100,
         color: 'red',
       },
@@ -383,6 +378,7 @@ function createMoodleNodes() {
     {
       data: {
         id: 'mod_wiki',
+        label: 'mod_wiki',
         level: 100,
         color: 'red',
       },
@@ -396,34 +392,48 @@ function createStudentNodes() {
       data: {
         id: student,
         color: 'green',
+        label: student,
       },
     };
   });
 }
 
-function createEdges() {
-  const allEdges = [];
-  Object.keys(info).forEach((student) => {
-    const studentEdges = Object.keys(info[student][0]).map((activity) => {
+function createEdges(studentNodes) {
+  const edges = [];
+  studentNodes.forEach(({ data }) => {
+    const studentEdges = Object.keys(info[data.id][0]).map((module) => {
       return {
         data: {
           id: Math.random(),
-          source: student,
-          target: activity,
+          source: data.id,
+          target: module,
+          label: info[data.id][0][module], // Average as label
         },
       };
     });
 
-    allEdges.push(...studentEdges);
+    edges.push(...studentEdges);
   });
 
-  return allEdges;
+  return edges;
 }
 
-const nodes = [...createMoodleNodes(), ...createStudentNodes()];
-const edges = [...createEdges()];
+const allStudentNodes = createStudentNodes();
+
+const nodes = [...createMoodleNodes(), ...allStudentNodes];
+const edges = [...createEdges(allStudentNodes)];
 
 const elements = [...nodes, ...edges];
+
+function graphLayout() {
+  return {
+    name: 'concentric',
+    concentric: function (node) {
+      return node.data('level') || 10;
+    },
+    minNodeSpacing: 50,
+  };
+}
 
 const cy = cytoscape({
   container: document.getElementById('cy'),
@@ -434,7 +444,7 @@ const cy = cytoscape({
       style: {
         shape: 'circle',
         'background-color': 'data(color)',
-        label: 'data(id)',
+        label: 'data(label)',
       },
     },
     {
@@ -445,15 +455,66 @@ const cy = cytoscape({
       },
     },
   ],
-  layout: {
-    name: 'concentric',
-    concentric: function (node) {
-      console.log(node.data('level') || 2);
-      return node.data('level') || 10;
-    },
-    minNodeSpacing: 50,
-  },
+  layout: graphLayout(),
 });
+
+$(function () {
+  $('#ms').multipleSelect({
+    onClose: function () {
+      const selectedStudentNames = getSelectedStudentNames();
+      const selectedStudentNodes = selectStudentNodes(selectedStudentNames);
+      updateGraph(selectedStudentNodes);
+    },
+    width: '100%',
+    filter: true,
+  });
+
+  refreshStudentDropdown();
+});
+
+function getSelectedStudentNames() {
+  return $('#ms').multipleSelect('getSelects', 'text');
+}
+
+function updateGraph(studentNodes) {
+  const edges = createEdges(studentNodes);
+  cy.elements().remove();
+  cy.add([...createMoodleNodes(), ...studentNodes, ...edges]);
+  cy.makeLayout(graphLayout()).run();
+  addGraphTooltips();
+}
+
+function selectStudentNodes(studentNames) {
+  if (studentNames.length == 0) {
+    return allStudentNodes; // All nodes are selected by default.
+  }
+  return allStudentNodes.filter(({ data }) => studentNames.includes(data.id));
+}
+
+function refreshStudentDropdown() {
+  populateStudentDropdown();
+  $('#ms').multipleSelect('refreshOptions', {});
+}
+
+function populateStudentDropdown() {
+  const studentDropdown = $('#ms');
+  $.each(allStudentNodes, function () {
+    const { id } = this.data;
+    studentDropdown.append($('<option />').val(Math.random).text(id));
+  });
+}
+
+function addGraphTooltips() {
+  cy.elements().forEach(function (ele) {
+    makePopper(ele);
+  });
+
+  cy.elements().unbind('mouseover');
+  cy.elements().bind('mouseover', (event) => event.target.tippy.show());
+
+  cy.elements().unbind('mouseout');
+  cy.elements().bind('mouseout', (event) => event.target.tippy.hide());
+}
 
 function makePopper(ele) {
   let ref = ele.popperRef(); // used only for positioning
@@ -462,21 +523,11 @@ function makePopper(ele) {
     // tippy options:
     content: () => {
       const content = document.createElement('div');
-      content.innerHTML = ele.id();
+      content.innerHTML = ele.data().label;
       return content;
     },
     trigger: 'manual', // probably want manual mode
   });
 }
 
-cy.ready(function () {
-  cy.elements().forEach(function (ele) {
-    makePopper(ele);
-  });
-});
-
-cy.elements().unbind('mouseover');
-cy.elements().bind('mouseover', (event) => event.target.tippy.show());
-
-cy.elements().unbind('mouseout');
-cy.elements().bind('mouseout', (event) => event.target.tippy.hide());
+cy.ready(addGraphTooltips);
